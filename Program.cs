@@ -63,7 +63,7 @@ string askProject()
         .PageSize(10)
         .MoreChoicesText("[grey](Move up and down to reveal more projects)[/]")
         .AddChoices(new[] {
-            "test", "Mobility", "Digital", "Locpro"
+            "TEST_ALEXIS", "Mobility", "Digital", "Locpro"
         }));
 }
 
@@ -97,27 +97,52 @@ void letsGo(string project)
     {
         foreach (var item in result.workItemRelations)
         {
-            get.url = item.target.url;
+            get.url = item.target.url + "?$expand=All&api-version=6.1-preview.3";
             result = get.GettingFromAzure();
+            bool hasChildRelation = false;
+            bool isItATask = false;
+
+            //Check if pbi has already a task. Need check if there is a child relation
+            foreach (var relation in result.relations ?? new dynamic[0])
+            {
+                if (relation.rel == "System.LinkTypes.Hierarchy-Forward")
+                {
+                    hasChildRelation = true;
+                    break;
+                }
+            }
+
+            Console.WriteLine($"------------------{result.fields["System.WorkItemType"]}--------------");
+
+            //Check if it is not already a task but real PBI that need duplication
+            if (result.fields["System.WorkItemType"] == "Task")
+            {
+                isItATask = true;
+            }
 
 
-            var json = new CreateJsonBody();
-            json.ticket = result;
 
-            var post = new PostToAzure();
-            post.url = $"https://dev.azure.com/IRIUMSOFTWARE/{project}/_apis/wit/workitems/$Task?api-version=7.0";
-            post.json = json.createJsonWithPBIToPostFromDynamic();
-            var newResult = post.postingToAzure();
+            if (hasChildRelation == false && isItATask == false)
+            {
+                var json = new CreateJsonBody();
+                json.ticket = result;
 
-            //Get & Patch relation hierarchy
-            var patch = new PatchToAzure();
-            patch.url = $"https://dev.azure.com/IRIUMSOFTWARE/{project}/_apis/wit/workitems/{newResult.id}?api-version=7.0";
-            patch.json = "[{\"op\": \"add\", \"path\": \"/relations/-\", \"value\": {\"rel\": \"System.LinkTypes.Hierarchy-Reverse\",  \"url\": \" " + item.target.url + " \"}}]";
-            patch.patchingToAzure();
+                var post = new PostToAzure();
+                post.url = $"https://dev.azure.com/IRIUMSOFTWARE/{project}/_apis/wit/workitems/$Task?api-version=7.0";
+                post.json = json.createJsonWithPBIToPostFromDynamic();
+                var newResult = post.postingToAzure();
 
+                //Get & Patch relation hierarchy
+                var patch = new PatchToAzure();
+                patch.url = $"https://dev.azure.com/IRIUMSOFTWARE/{project}/_apis/wit/workitems/{newResult.id}?api-version=7.0";
+                patch.json = "[{\"op\": \"add\", \"path\": \"/relations/-\", \"value\": {\"rel\": \"System.LinkTypes.Hierarchy-Reverse\",  \"url\": \" " + item.target.url + " \"}}]";
+                patch.patchingToAzure();
+            }
         }
     } else
     {
         return;
     }
 }
+
+// Checker si il y a un lien enfant parent et si oyui, ne pas créer de tache.
